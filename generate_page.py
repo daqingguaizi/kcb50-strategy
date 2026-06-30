@@ -527,5 +527,23 @@ def S_TOTAL(v):
     return "+" if v >= 0 else ""
 
 
+# ═══════════════════════════════════════════
+# GitHub Pages 自动推送（由 cron 调用时执行）
+# ═══════════════════════════════════════════
+def git_push():
+    """把更新后的 index.html 和数据推送到 GitHub"""
+    import subprocess
+    root = Path(__file__).parent
+    try:
+        subprocess.run(["git", "-C", str(root), "add", "index.html", "data/000688.csv"], check=True, capture_output=True)
+        result = subprocess.run(["git", "-C", str(root), "commit", "-m", f"自动更新: {datetime.now().strftime('%Y-%m-%d')}"], capture_output=True)
+        if "nothing to commit" not in result.stderr.decode():
+            subprocess.run(["git", "-C", str(root), "push", "origin", "main"], check=True, capture_output=True, timeout=30)
+            print("  🚀 已推送到 GitHub Pages")
+    except Exception as e:
+        print(f"  ⚠️  Git推送跳过: {e}")
+
+
 if __name__ == "__main__":
     generate()
+    git_push()
