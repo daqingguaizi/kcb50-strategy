@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0f12">
+<title>科创50策略看盘</title>
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+    background: #0f0f12;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 16px;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .header { text-align: center; padding: 8px 0 4px; }
+  .header .t { font-size: 15px; color: #888; letter-spacing: 2px; }
+  .status-bar {
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; margin-top: 6px; font-size: 11px; color: #555;
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+    animation: pulse 2s infinite;
+  }
+  .live-dot.on  { background: #00d4aa; }
+  .live-dot.off { background: #f44; animation: none; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .refresh-btn {
+    background: #1a1a24; border:1px solid #2a2a3a; color:#00d4aa;
+    padding:4px 12px; border-radius:12px; font-size:11px;
+    cursor:pointer; -webkit-tap-highlight-color:transparent; user-select:none;
+  }
+  .refresh-btn:active { background:#2a2a3a; }
+
+  .signal-card {
+    background: linear-gradient(135deg, #1a1a24 0%, #1f1f2e 100%);
+    border: 1px solid #2a2a3a; border-radius: 16px;
+    padding: 24px 20px; text-align: center;
+    margin-bottom: 12px; position: relative; overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .signal-card::before { content:''; position:absolute; top:0;left:0;right:0; height:3px; }
+  .signal-card.long::before  { background: #00d4aa; }
+  .signal-card.cash::before  { background: #555; }
+  .signal-badge {
+    display: inline-block; padding: 6px 18px; border-radius: 20px;
+    font-size: 14px; font-weight: 700; letter-spacing: 2px; margin-bottom: 12px;
+  }
+  .long .signal-badge  { background:#00d4aa22; color:#00d4aa; border:1px solid #00d4aa44; }
+  .cash .signal-badge  { background:#44444422; color:#888;    border:1px solid #44444444; }
+  .pnl {
+    font-size: 48px; font-weight: 800; letter-spacing: -1px;
+    line-height: 1; margin: 8px 0; transition: color 0.3s;
+  }
+  .pnl.pos  { color: #00d4aa; }
+  .pnl.neg  { color: #ff4d6a; }
+  .pnl.none { color: #888; }
+  .sub { font-size: 12px; color: #666; margin-top: 6px; }
+  .sub .h  { color: #00d4aa; }
+  .sub .d  { color: #ff4d6a; }
+  .sub .w  { color: #999; }
+  .sub .live-tag { font-size:10px; color:#00d4aa; animation:pulse 1.5s infinite; }
+
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+  .stat-box {
+    background: #1a1a24; border:1px solid #2a2a3a;
+    border-radius:12px; padding:14px 12px; text-align:center;
+  }
+  .stat-box .label { font-size:11px; color:#666; letter-spacing:.5px; margin-bottom:4px; }
+  .stat-box .value { font-size:20px; font-weight:700; }
+  .stat-box .value.g  { color: #00d4aa; }
+  .stat-box .value.r  { color: #ff4d6a; }
+  .stat-box .value.w  { color: #e0e0e0; }
+
+  .section-title { font-size:13px; color:#666; letter-spacing:2px; padding:8px 4px; }
+  .trade-table {
+    width:100%; background:#1a1a24; border:1px solid #2a2a3a;
+    border-radius:12px; overflow:hidden; margin-bottom:12px;
+  }
+  .trade-table table { width:100%; border-collapse:collapse; font-size:13px; }
+  .trade-table th { color:#555; font-weight:500; font-size:11px; letter-spacing:1px;
+    padding:10px 12px 6px; text-align:left; }
+  .trade-table td { padding:8px 12px; border-top:1px solid #1f1f2a; }
+  .trade-table .win  { color:#00d4aa; }
+  .trade-table .loss { color:#ff4d6a; }
+  .trade-table .holding { color:#00d4aa; font-size:11px; }
+
+  .footer { text-align:center; padding:12px 0 24px; font-size:11px; color:#444; line-height:1.6; }
+  .footer span { color:#555; }
+</style>
+</head>
+<body>
+
+<!-- 初始值由 Python 生成填入，JS 启动后接管更新 -->
+<div class="header">
+  <div class="t">🔬 科创50 · TRIX策略</div>
+  <div class="status-bar">
+    <span class="live-dot on" id="dot"></span>
+    <span id="st">已连接</span>
+    <span style="color:#444">|</span>
+    <span id="ts">--:--:--</span>
+    <button class="refresh-btn" ontouchend="refresh()" onclick="refresh()">⟳ 刷新</button>
+  </div>
+</div>
+
+<!-- 信号卡片 -->
+<div class="signal-card long" id="card">
+  <div class="signal-badge" id="badge">🟢 做多 LONG</div>
+  <div class="pnl pos" id="pnl">+13.3%</div>
+  <div class="sub" id="info">入场 ¥1948.93 · 持仓第8天 · 现价 ¥2207.86</div>
+  <div class="sub" style="margin-top:4px" id="daily">ETF 588000 今日 <span class="h">+3.85%</span></div>
+</div>
+
+<!-- 指标 -->
+<div class="grid-3">
+  <div class="stat-box"><div class="label">累计收益</div><div class="value g" id="v0">+428.7%</div></div>
+  <div class="stat-box"><div class="label">年化收益</div><div class="value g" id="v1">+30.6%</div></div>
+  <div class="stat-box"><div class="label">最大回撤</div><div class="value r" id="v2">-27.1%</div></div>
+</div>
+<div class="grid-3">
+  <div class="stat-box"><div class="label">夏普比率</div><div class="value w" id="v3">1.10</div></div>
+  <div class="stat-box"><div class="label">胜率</div><div class="value w" id="v4">53.8%</div></div>
+  <div class="stat-box"><div class="label">盈亏比</div><div class="value w" id="v5">3.72</div></div>
+</div>
+
+<div class="section-title">📋 最近交易</div>
+<div class="trade-table"><table>
+  <thead><tr><th>入场</th><th>出场</th><th style="text-align:right">收益</th><th style="text-align:right">天数</th></tr></thead>
+  <tbody id="trades"><tr><td>2026-06-22</td><td>2026-06-30</td><td style="text-align:right" class="win">+13.3%</td><td style="text-align:right;color:#888">8天</td></tr>
+<tr><td>2026-04-08</td><td>2026-05-29</td><td style="text-align:right" class="win">+29.5%</td><td style="text-align:right;color:#888">51天</td></tr>
+<tr><td>2025-12-05</td><td>2026-01-30</td><td style="text-align:right" class="win">+13.8%</td><td style="text-align:right;color:#888">56天</td></tr>
+<tr><td>2025-09-25</td><td>2025-10-14</td><td style="text-align:right" class="loss">-4.4%</td><td style="text-align:right;color:#888">19天</td></tr>
+<tr><td>2025-08-14</td><td>2025-09-09</td><td style="text-align:right" class="win">+14.7%</td><td style="text-align:right;color:#888">26天</td></tr>
+<tr><td>2025-06-25</td><td>2025-08-12</td><td style="text-align:right" class="win">+7.5%</td><td style="text-align:right;color:#888">48天</td></tr>
+</tbody>
+</table></div>
+
+<div class="grid-3">
+  <div class="stat-box"><div class="label">总交易</div><div class="value w" id="v6">40</div></div>
+  <div class="stat-box"><div class="label">平均持仓</div><div class="value w" id="v7">29天</div></div>
+  <div class="stat-box"><div class="label">数据日期</div><div class="value w" style="font-size:14px" id="v8">06-30</div></div>
+</div>
+
+<div class="footer">
+  标的: 科创50ETF (588000) · 参数: period=9, signal=17<br>
+  <span>交易日15:30自动更新 · 策略信号仅供参考，不构成投资建议</span>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// 实时更新引擎
+// ═══════════════════════════════════════════
+
+var API = '/api/status';
+var POLL_FAST = 10e3;   // 交易时段 10s
+var POLL_SLOW = 60e3;   // 非交易时段 60s
+var QUIET_POLL = 5 * 60e3; // GitHub Pages 模式：5分钟检查一次
+var REFRESH_MIN = 15;
+var REFRESH_HOUR = 15;
+
+var timer = null;
+var ctrl = null;
+var cache = null;
+var failCount = 0;
+var isCloud = false;       // true = GitHub Pages（无后端API）
+
+function E(id){ return document.getElementById(id); }
+function S(v){ return v>=0 ? '+' : ''; }
+function G(v){ return v>=0 ? 'g' : 'r'; }
+
+function refresh(){
+  location.reload();
+}
+
+// 切换到云端静态模式（无需后端 API，页面数据由 GitHub Actions 每日更新）
+function enterCloudMode(){
+  isCloud = true;
+  // 页面数据已内嵌在 HTML 中，直接显示即可
+  E('dot').className = 'live-dot on';
+  E('st').innerHTML = '☁️ 云端托管';
+  E('st').style.color = '#888';
+  E('ts').textContent = '静态模式';
+}
+
+function poll_success(data){
+  failCount = 0;
+  cache = data;
+  update(data.signal, data.quote);
+
+  E('dot').className = 'live-dot on';
+  E('st').innerHTML = data.market_open ? '🟢 实时监控中' : '已连接';
+  if(isCloud){ E('st').style.color = '#00d4aa'; isCloud = false; }
+  E('ts').textContent = data.ts ? data.ts.substring(11,19) : '';
+
+  // 收盘后自动全量刷新
+  var n = new Date();
+  var today = n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+  if(n.getDay()>=1 && n.getDay()<=5 && n.getHours()>=REFRESH_HOUR && n.getMinutes()>=REFRESH_MIN){
+    if(data.signal && data.signal.data_date < today){
+      refresh();
+      return;
+    }
+  }
+}
+
+// 判断是否盘中
+function isMarket(){
+  var n = new Date();
+  if(n.getDay()===0 || n.getDay()===6) return false;
+  var t = n.getHours()*100 + n.getMinutes();
+  return t >= 930 && t <= 1500;
+}
+
+function update(sig, q){
+  var s = sig.signal;
+  var m = sig.metrics;
+  var card = E('card');
+  var badge = E('badge');
+  var pnlEl = E('pnl');
+  var infoEl = E('info');
+  var dailyEl = E('daily');
+
+  // 信号状态
+  if(s === 1){
+    card.className = 'signal-card long';
+    badge.textContent = '🟢 做多 LONG';
+  } else {
+    card.className = 'signal-card cash';
+    badge.textContent = '⚪ 空仓 CASH';
+  }
+
+  // 浮盈（用指数价格算，ETF实时价单独显示）
+  var dp = sig.pnl != null ? sig.pnl : 0;
+
+  if(s === 1 && sig.entry_price){
+    pnlEl.className = 'pnl ' + (dp>=0?'pos':'neg');
+    pnlEl.textContent = S(dp) + dp.toFixed(1) + '%';
+    var info = '入场 ¥' + sig.entry_price.toFixed(2) + ' · 持仓第' + sig.hold_days + '天 · 指数 ¥' + sig.index_price.toFixed(0);
+    if(q && q.price){
+      info += ' · <span style="color:#888">ETF ¥' + q.price.toFixed(3) + '</span>';
+      if(data.market_open) info += ' <span class="live-tag">●</span>';
+    }
+    infoEl.innerHTML = info;
+  } else {
+    pnlEl.className = 'pnl none';
+    pnlEl.textContent = '—';
+    infoEl.textContent = '持币观望，等待下一次信号';
+  }
+
+  // 日内涨跌
+  var dc = sig.daily_change != null ? sig.daily_change : 0;
+  dailyEl.innerHTML = 'ETF 588000 今日 <span class="' + (dc>=0?'h':'d') + '">' + S(dc) + dc.toFixed(2) + '%</span>';
+  if(q && q.change_pct != null){
+    dailyEl.innerHTML += ' <span style="font-size:10px;color:#666">(盘中 <span class="' + (q.change_pct>=0?'h':'d') + '">' + S(q.change_pct) + q.change_pct.toFixed(2) + '%</span>)</span>';
+  }
+
+  // 指标
+  E('v0').textContent = S(m.total_return) + m.total_return.toFixed(1) + '%';
+  E('v0').className = 'value ' + G(m.total_return);
+  E('v1').textContent = S(m.annual_return) + m.annual_return.toFixed(1) + '%';
+  E('v1').className = 'value ' + G(m.annual_return);
+  E('v2').textContent = '-' + Math.abs(m.max_drawdown).toFixed(1) + '%';
+  E('v3').textContent = m.sharpe.toFixed(2);
+  E('v4').textContent = m.win_rate.toFixed(1) + '%';
+  E('v5').textContent = m.profit_factor.toFixed(2);
+  E('v6').textContent = m.total_trades;
+  E('v7').textContent = m.avg_hold_days + '天';
+  E('v8').textContent = sig.data_date ? sig.data_date.substring(5) : '';
+
+  // 交易列表
+  var trades = sig.recent_trades || [];
+  var rows = '';
+  for(var i = trades.length-1; i >= 0; i--){
+    var t = trades[i];
+    var cs = t['return'] >= 0 ? 'win' : 'loss';
+    var ss = t['return'] >= 0 ? '+' : '';
+    var hold = t.exit && t.exit.indexOf('持仓中') >= 0;
+    var exitDisp = hold ? t.exit.replace('(持仓中)', '<span class="holding">持仓中</span>') : t.exit;
+    rows += '<tr><td>' + t.entry + '</td><td>' + exitDisp + '</td>' +
+      '<td style="text-align:right" class="' + cs + '">' + ss + t['return'].toFixed(1) + '%</td>' +
+      '<td style="text-align:right;color:#888">' + t.days + '天</td></tr>';
+  }
+  E('trades').innerHTML = rows;
+}
+
+async function poll(){
+  clearTimeout(timer);
+  if(ctrl) { try{ctrl.abort()}catch(e){} }
+  ctrl = new AbortController();
+
+  // 如果已确认云端模式，低频检查
+  if(isCloud){
+    try {
+      var r = await fetch(API, {signal: ctrl.signal, cache: 'no-cache'});
+      if(r.ok){
+        var d = await r.json();
+        if(d && d.ok){ poll_success(d); }
+      }
+    } catch(e){}
+    timer = setTimeout(poll, QUIET_POLL);
+    return;
+  }
+
+  try {
+    var resp = await fetch(API, {signal: ctrl.signal, cache: 'no-cache'});
+    if(!resp.ok) throw new Error('HTTP ' + resp.status);
+    var data = await resp.json();
+    if(!data.ok) throw new Error('not ok');
+    poll_success(data);
+  } catch(e){
+    if(e.name === 'AbortError') return;
+    failCount++;
+    if(failCount >= 3){
+      enterCloudMode();
+    } else {
+      E('dot').className = 'live-dot off';
+      E('st').textContent = '重试中 (' + failCount + '/3)...';
+    }
+  }
+
+  var interval = isCloud ? QUIET_POLL :
+    (isMarket() ? POLL_FAST : POLL_SLOW);
+  timer = setTimeout(poll, interval);
+}
+
+// 判断盘中（浏览器本地时间）
+function isMarket(){
+  var n = new Date();
+  if(n.getDay()===0 || n.getDay()===6) return false;
+  var t = n.getHours()*100 + n.getMinutes();
+  return t >= 930 && t <= 1500;
+}
+
+// 页面切回时立即拉取
+document.addEventListener('visibilitychange', function(){
+  if(!document.hidden){
+    clearTimeout(timer);
+    timer = setTimeout(poll, 500);
+  }
+});
+
+// 启动
+document.addEventListener('DOMContentLoaded', function(){
+  // 尝试连接 API
+  poll();
+
+  // 如果 15 秒内没连上 API，切换到云端显示模式
+  setTimeout(function(){
+    if(!cache && failCount > 0) enterCloudMode();
+  }, 15000);
+});
+
+// 双击顶部强制刷新
+document.querySelector('.header').addEventListener('dblclick', refresh);
+</script>
+</body>
+</html>

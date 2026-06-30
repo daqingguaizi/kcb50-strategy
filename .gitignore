@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+cron.log
+server.log
+cron_test.txt
+start_server.sh
+live_monitor.py
+serve.py
+strategy.html
